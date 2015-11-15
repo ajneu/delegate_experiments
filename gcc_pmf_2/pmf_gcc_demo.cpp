@@ -1,3 +1,5 @@
+#include <utility>
+
 // very experimental....
 
 /*
@@ -11,12 +13,6 @@ etc etc
 
 // https://gcc.gnu.org/onlinedocs/gcc-4.9.0/gcc/Bound-member-functions.html
 
-#include <stdio.h>
-#include <utility>
-// Demonstrate the syntax for FastDelegates.
-//				-Don Clugston, May 2004.
-// It's a really boring example, but it shows the most important cases.
-
 
 template<typename Cl, typename Ret, typename... Args>
 using signat_t = Ret(*)(Cl *, Args...);
@@ -25,6 +21,8 @@ using signat_t = Ret(*)(Cl *, Args...);
   signat_t<T, void>               = void(*)(T *);
   signat_t<T, int, double, float) =  int(*)(T *, double, float);
 */
+
+
 
 template <typename Signature>
 class FFF;
@@ -35,59 +33,49 @@ class FFF<Ret(Args...)>
 private:
    void *inst{};
    signat_t<void, Ret, Args...> mfp{};
-
-public:
-   // template<typename Cl>
-   // static FFF make(Cl *ins, Ret(Cl::*mmm)(Args...)) {
-   //    return FFF{ins, reinterpret_cast<decltype(mfp)>(ins->*mmm)};
-   // }
-   template<typename Cl>
-   static FFF make(void *ins, Ret(Cl::*mmm)(Args...)) {
-      return FFF{ins, reinterpret_cast<decltype(mfp)>(static_cast<Cl *>(ins)->*mmm)};
-   }
-
-   // template<typename Cl>
-   // static FFF make(const Cl *ins, Ret(Cl::*mmm)(Args...) const) {
-   //    return FFF{const_cast<Cl *>(ins), reinterpret_cast<decltype(mfp)>(ins->*mmm)};
-   // }
-   template<typename Cl>
-   static FFF make(const void *ins, Ret(Cl::*mmm)(Args...) const) {
-      return FFF{const_cast<void *>(ins), reinterpret_cast<decltype(mfp)>(static_cast<const Cl *>(ins)->*mmm)};
-   }
-
    
-   // template<typename Cl>
-   // void bind(Cl *ins, Ret(Cl::*mmm)(Args...)) {
-   //    inst = ins;
-   //    mfp = reinterpret_cast<decltype(mfp)>(ins->*mmm);
-   // }
-   template<typename Cl>
-   void bind(void *ins, Ret(Cl::*mmm)(Args...)) {
-      inst = ins;
-      mfp = reinterpret_cast<decltype(mfp)>(static_cast<Cl *>(ins)->*mmm);
+   template<typename T>
+   static Ret static_invoker(decltype(mfp) mfffp, void *inss, Args... args) {
+      return mfffp(static_cast<T*>(inss), std::forward<Args>(args)...);
    }
 
-   // template<typename Cl>
-   // void bind(const Cl *ins, Ret(Cl::*mmm)(Args...) const) {
-   //    inst = const_cast<Cl *>(ins);
-   //    mfp = reinterpret_cast<decltype(mfp)>(ins->*mmm);
-   // }
-   template<typename Cl>
-   void bind(const void *ins, Ret(Cl::*mmm)(Args...) const) {
-      inst = const_cast<void *>(ins);
-      mfp = reinterpret_cast<decltype(mfp)>(static_cast<const Cl *>(ins)->*mmm);
+   decltype(static_invoker<void>) *fp_invoker;
+   
+public:
+   template<typename Cl1, typename Cl2>
+   static FFF make(Cl1 *ins, Ret(Cl2::*mmm)(Args...)) {
+      return FFF{ins, reinterpret_cast<decltype(mfp)>((ins)->*mmm), static_invoker<Cl2>};
+   }
+
+   template<typename Cl1, typename Cl2>
+   static FFF make(const Cl1 *ins, Ret(Cl2::*mmm)(Args...) const) {
+      return FFF{const_cast<void *>(ins), reinterpret_cast<decltype(mfp)>((ins)->*mmm), static_invoker<Cl2>};
+   }
+
+   template<typename Cl1, typename Cl2>
+   void bind(Cl1 *ins, Ret(Cl2::*mmm)(Args...)) {
+      inst = ins;
+      mfp = reinterpret_cast<decltype(mfp)>((ins)->*mmm);
+      fp_invoker = static_invoker<Cl2>;
+   }
+
+   template<typename Cl1, typename Cl2>
+   void bind(const Cl1 *ins, Ret(Cl2::*mmm)(Args...) const) {
+      inst = const_cast<void *>(static_cast<const void *>(ins));
+      mfp = reinterpret_cast<decltype(mfp)>((ins)->*mmm);
+      fp_invoker = static_invoker<Cl2>;
    }
 
    
    Ret operator()(Args... args) {
-      return mfp(inst, std::forward<Args>(args)...);
+      return fp_invoker(mfp, inst, std::forward<Args>(args)...);
    }
 
    FFF() = default;
 
    bool operator==(const FFF &rhs)
    {
-      return ((inst == rhs.inst) && (mfp == rhs.mfp));
+      return ((fp_invoker == rhs.fp_invoker) && (mfp == rhs.mfp) && (inst == rhs.inst));
    }
 
    bool operator!() {
@@ -96,11 +84,17 @@ public:
 
 private:
 
-   FFF(void *ins, decltype(mfp) mmm) : inst{ins}, mfp{mmm}
+   FFF(void *ins, decltype(mfp) mmm, decltype(fp_invoker) inv) : inst{ins}, mfp{mmm}, fp_invoker{inv}
    {   }
 
 };
 
+
+#include <stdio.h>
+
+// Demonstrate the syntax for FastDelegates.
+//				-Don Clugston, May 2004.
+// It's a really boring example, but it shows the most important cases.
 
 
 
@@ -153,6 +147,9 @@ public:
 		printf("In Derived TrickyMemberFunction. Num=%d, str = %s\n", num, str);
 	}
 };
+
+
+
 
 
 int main(void)
@@ -209,7 +206,12 @@ int main(void)
 	// For MSVC, you can use &CDerivedClass::SimpleVirtualFunction here, but DMC will complain.
 	// Note that as well as .bind(), you can also use the MakeDelegate()
 	// global function.
+        //funclist[6] = MyDelegate::make<CBaseClass>(&d, &CDerivedClass::SimpleVirtualFunction);
         funclist[6] = MyDelegate::make<CBaseClass>(&d, &CBaseClass::SimpleVirtualFunction);
+
+        //(reinterpret_cast<signat_t<void, void, int, const char *>>((&d)->*(&CBaseClass::SimpleVirtualFunction)))(static_cast<CBaseClass*>(&d), 6, "here we go!");
+
+
 
 	// The worst case is an abstract virtual function of a virtually-derived class
 	// with at least one non-virtual base class. This is a VERY obscure situation,
@@ -227,11 +229,11 @@ int main(void)
 
 
         // You can also bind directly using the constructor
-        //MyDelegate dg(&b, &CBaseClass::SimpleVirtualFunction);
-        MyDelegate dg = MyDelegate::make(&a, &CBaseClass::SimpleMemberFunction);
+        MyDelegate dg = MyDelegate::make(&b, &CBaseClass::SimpleVirtualFunction);
 
-	const char *msg = "Looking for equal delegate";
+	const char *msg;
 	for (int i=0; i<12; i++) {
+                msg = "Looking for equal delegate";
 		printf("%d :", i);
 		// The == and != operators are provided
 		// Note that they work even for inline functions.
