@@ -1,0 +1,15 @@
+= Delegate, Function Pointer, Callable, etc. etc.
+:source-highlighter: coderay
+:coderay-linenums-mode: inline
+:toc:
+
+== References
+
+http://www.codeproject.com/Articles/7150/Member-Function-Pointers-and-the-Fastest-Possible +
+http://blog.toonormal.com/2012/11/11/safe-c-pointers-to-member-functions/ +
+https://gcc.gnu.org/onlinedocs/gcc-4.9.0/gcc/Bound-member-functions.html (see e.g. https://github.com/ajneu/delegate_experiments/blob/master/gcc_pmf_2/pmf_gcc_demo.cpp[example here])
+https://gist.github.com/SuperV1234/6462221 +
+https://github.com/janezz55/generic +
+https://github.com/potswa/cxx_function +
+https://github.com/jamboree/CxxFunctionBenchmark +
+https://github.com/NoAvailableAlias/signal-slot-benchmarks
